@@ -22,6 +22,7 @@
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #007bff; color: white; }
         .btn-delete { background-color: #dc3545; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; }
+        .btn-excel { background-color: #17a2b8; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; margin-right: 5px; }
         .page-view { display: none; }
         .page-view.active { display: block; }
         .timer-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 15px; font-weight: bold; text-align: center; }
@@ -54,7 +55,8 @@
                 <select id="ethMonth" onchange="onCustomDateChange()"></select>
                 <select id="ethYear" onchange="onCustomDateChange()"></select>
             </div>
-            <div style="margin-top: 10px; text-align: right;">
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-excel" onclick="exportTodayToExcel()">የዛሬውን Excel አውርድ</button>
                 <button style="padding: 5px 10px; font-size: 13px; background: #007bff;" onclick="resetToToday()">ወደ ዛሬ ቀን ተመለስ</button>
             </div>
         </div>
@@ -83,7 +85,10 @@
 
     <!-- 2. የታሪክ ገጽ -->
     <div id="historyPage" class="page-view">
-        <h3>የተመዘገቡ የቀደሙ ታሪኮች</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin:0;">የተመዘገቡ የቀደሙ ታሪኮች</h3>
+            <button class="btn-excel" onclick="exportAllHistoryToExcel()">ሁሉንም ታሪክ Excel አውርድ</button>
+        </div>
         <div id="historyContainer"></div>
     </div>
 </div>
@@ -256,7 +261,10 @@
             let createdTimestamp = currentRecord.createdTimestamp || Date.now();
             let currentTime = Date.now();
             let elapsedTime = currentTime - createdTimestamp;
-            let isLocked = currentRecord.createdTimestamp && (elapsedTime >= TWENTY_FOUR_HOURS_MS);
+            let isLocked = currentRecord.currentTimestamp ? (elapsedTime >= TWENTY_FOUR_HOURS_MS) : false;
+            if (currentRecord.createdTimestamp && elapsedTime >= TWENTY_FOUR_HOURS_MS) {
+                isLocked = true;
+            }
 
             updateTimerUI(createdTimestamp, isLocked, currentRecord.createdTimestamp);
 
@@ -320,7 +328,6 @@
         }
     }
 
-    // የታሪክ መዝገብን ለማጥፋት (Delete History Record)
     function deleteHistoryRecord(dateKey) {
         if (confirm("በእርግጥ የዚህን ቀን የታሪክ መዝገብ በሙሉ ማጥፋት ይፈልጋሉ?")) {
             database.ref('attendanceRecords/' + dateKey).remove().then(() => {
@@ -354,7 +361,10 @@
                     let html = `
                         <div class="history-header">
                             <h4 style="color:#007bff; margin:0;">የቀን፡ ${ethText}</h4>
-                            <button class="btn-delete" onclick="deleteHistoryRecord('${dateKey}')">ታሪክ አጥፋ</button>
+                            <div>
+                                <button class="btn-excel" onclick="exportSingleHistoryToExcel('${dateKey}', '${ethText}')">Excel</button>
+                                <button class="btn-delete" onclick="deleteHistoryRecord('${dateKey}')">አጥፋ</button>
+                            </div>
                         </div>
                         <table>
                             <thead><tr><th>ተማሪ</th><th>ሁኔታ</th></tr></thead>
@@ -372,6 +382,85 @@
                     container.appendChild(card);
                 });
             });
+        });
+    }
+
+    // --- የ Excel (CSV) ማውረጃ ተግባራት ---
+
+    function downloadCSV(csvContent, fileName) {
+        let blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        let link = document.createElement("a");
+        let url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function exportTodayToExcel() {
+        database.ref().once('value', snapshot => {
+            let allData = snapshot.val() || {};
+            let students = Object.values(allData.students || {});
+            let record = (allData.attendanceRecords && allData.attendanceRecords[selectedEthDate.key]) ? allData.attendanceRecords[selectedEthDate.key].data || {} : {};
+
+            let csv = `ቀን: ${selectedEthDate.formatted}\n`;
+            csv += `ተ.ቁ,የተማሪ ስም,ሁኔታ\n`;
+
+            students.forEach((student, index) => {
+                let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
+                csv += `${index + 1},"${student.name}",${status}\n`;
+            });
+
+            downloadCSV(csv, `Attendance_${selectedEthDate.key}.csv`);
+        });
+    }
+
+    function exportSingleHistoryToExcel(dateKey, ethText) {
+        database.ref().once('value', snapshot => {
+            let allData = snapshot.val() || {};
+            let students = Object.values(allData.students || {});
+            let record = (allData.attendanceRecords && allData.attendanceRecords[dateKey]) ? allData.attendanceRecords[dateKey].data || {} : {};
+
+            let csv = `ቀን: ${ethText}\n`;
+            csv += `ተ.ቁ,የተማሪ ስም,ሁኔታ\n`;
+
+            students.forEach((student, index) => {
+                let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
+                csv += `${index + 1},"${student.name}",${status}\n`;
+            });
+
+            downloadCSV(csv, `Attendance_${dateKey}.csv`);
+        });
+    }
+
+    function exportAllHistoryToExcel() {
+        database.ref().once('value', snapshot => {
+            let allData = snapshot.val() || {};
+            let students = Object.values(allData.students || {});
+            let records = allData.attendanceRecords || {};
+            let dates = Object.keys(records);
+
+            if (dates.length === 0) return alert("ምንም የተቀመጠ ታሪክ የለም!");
+
+            let csv = `የተማሪ ስም`;
+            dates.forEach(dateKey => {
+                let ethText = records[dateKey].ethiopianDateText || dateKey;
+                csv += `,"${ethText}"`;
+            });
+            csv += `\n`;
+
+            students.forEach(student => {
+                csv += `"${student.name}"`;
+                dates.forEach(dateKey => {
+                    let record = records[dateKey].data || {};
+                    let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
+                    csv += `,${status}`;
+                });
+                csv += `\n`;
+            });
+
+            downloadCSV(csv, `Full_Attendance_History.csv`);
         });
     }
 
