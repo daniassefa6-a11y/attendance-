@@ -221,21 +221,21 @@
         let name = nameInput.value.trim();
         if (name === "") return alert("እባክዎን የተማሪ ስም ያስገቡ!");
 
-        let studentId = Date.now();
+        let studentId = "std_" + Date.now();
         database.ref('students/' + studentId).set({ id: studentId, name: name });
         nameInput.value = "";
     }
 
-    // ተማሪውን እና የተማሪውን የድሮ አቴንዳንስ መረጃዎች በሙሉ የማጥፋት ተግባር
-    function deleteStudent(id, studentName) {
-        if(confirm(`በእርግጥ ተማሪ "${studentName}"ን ሙሉ በሙሉ ማጥፋት ይፈልጋሉ?`)) {
-            // 1. ከተማሪዎች ስም ዝርዝር ውስጥ ማጥፋት
-            database.ref('students/' + id).remove().then(() => {
-                // 2. ከሁሉም የድሮ አቴንዳንስ መዝገቦች ውስጥ መረጃውን ማጽዳት
+    // የተማሪን ስም እና የተያያዙ መረጃዎችን ሙሉ በሙሉ የማጥፋት አስተማማኝ ተግባር
+    function deleteStudent(key, studentName) {
+        if(confirm(`በእርግጥ ተማሪ "${studentName}"ን ማጥፋት ይፈልጋሉ?`)) {
+            // 1. ከ 'students' node ስር በKey መሰረት ማጥፋት
+            database.ref('students/' + key).remove().then(() => {
+                // 2. ከሁሉም 'attendanceRecords' ውስጥ ከተማሪው ID/Key ጋር የተያያዙ መረጃዎችን ማጽዳት
                 database.ref('attendanceRecords').once('value', snapshot => {
                     let records = snapshot.val() || {};
                     Object.keys(records).forEach(dateKey => {
-                        database.ref(`attendanceRecords/${dateKey}/data/${id}`).remove();
+                        database.ref(`attendanceRecords/${dateKey}/data/${key}`).remove();
                     });
                 });
                 alert(`ተማሪ "${studentName}" በተሳካ ሁኔታ ተሰርዟል!`);
@@ -245,7 +245,7 @@
         }
     }
 
-    function toggleAttendance(studentId, isChecked, isLocked) {
+    function toggleAttendance(studentKey, isChecked, isLocked) {
         if (isLocked) {
             alert("ይህ መዝገብ የ 24 ሰዓት ጊዜው ስለሞላ መለወጥ አይቻልም!");
             return;
@@ -260,14 +260,16 @@
 
             database.ref('attendanceRecords/' + dateKey + '/createdTimestamp').set(createdTimestamp);
             database.ref('attendanceRecords/' + dateKey + '/ethiopianDateText').set(selectedEthDate.formatted);
-            database.ref('attendanceRecords/' + dateKey + '/data/' + studentId).set(isChecked);
+            database.ref('attendanceRecords/' + dateKey + '/data/' + studentKey).set(isChecked);
         });
     }
 
     function loadData() {
         database.ref().on('value', snapshot => {
             let allData = snapshot.val() || {};
-            let students = Object.values(allData.students || {});
+            let studentsObj = allData.students || {};
+            let studentKeys = Object.keys(studentsObj);
+            
             let recordsObj = allData.attendanceRecords || {};
             let currentRecord = recordsObj[selectedEthDate.key] || {};
             let attendanceData = currentRecord.data || {};
@@ -282,25 +284,28 @@
             let tbody = document.getElementById('studentList');
             tbody.innerHTML = "";
 
-            if (students.length === 0) {
+            if (studentKeys.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">ምንም የተመዘገበ ተማሪ የለም!</td></tr>';
                 return;
             }
 
-            students.forEach((student, index) => {
-                let isPresent = attendanceData[student.id] === true;
+            studentKeys.forEach((key, index) => {
+                let student = studentsObj[key];
+                let isPresent = attendanceData[key] === true;
+                let studentName = student.name || student;
+                
                 let row = `
                     <tr>
                         <td>${index + 1}</td>
-                        <td>${student.name}</td>
+                        <td>${studentName}</td>
                         <td style="text-align: center;">
                             <input type="checkbox" style="width:20px; height:20px; cursor:pointer;" 
                                 ${isPresent ? 'checked' : ''} 
                                 ${isLocked ? 'disabled' : ''}
-                                onchange="toggleAttendance(${student.id}, this.checked, ${isLocked})">
+                                onchange="toggleAttendance('${key}', this.checked, ${isLocked})">
                         </td>
                         <td>
-                            <button class="btn-delete" onclick="deleteStudent('${student.id}', '${student.name}')">አጥፋ</button>
+                            <button class="btn-delete" onclick="deleteStudent('${key}', '${studentName.replace(/'/g, "\\'")}')">አጥፋ</button>
                         </td>
                     </tr>
                 `;
@@ -354,7 +359,8 @@
             container.innerHTML = "";
 
             database.ref('students').once('value', studSnapshot => {
-                let students = Object.values(studSnapshot.val() || {});
+                let studentsObj = studSnapshot.val() || {};
+                let studentKeys = Object.keys(studentsObj);
                 let dates = Object.keys(records).reverse();
 
                 if (dates.length === 0) {
@@ -381,11 +387,13 @@
                             <thead><tr><th>ተማሪ</th><th>ሁኔታ</th></tr></thead>
                             <tbody>`;
                     
-                    students.forEach(student => {
-                        let status = (record.data && record.data[student.id]) 
+                    studentKeys.forEach(key => {
+                        let student = studentsObj[key];
+                        let studentName = student.name || student;
+                        let status = (record.data && record.data[key]) 
                             ? "<span style='color:green; font-weight:bold;'>ተገኝቷል</span>" 
                             : "<span style='color:red;'>አልተገኘም</span>";
-                        html += `<tr><td>${student.name}</td><td>${status}</td></tr>`;
+                        html += `<tr><td>${studentName}</td><td>${status}</td></tr>`;
                     });
                     
                     html += `</tbody></table>`;
@@ -410,15 +418,18 @@
     function exportTodayToExcel() {
         database.ref().once('value', snapshot => {
             let allData = snapshot.val() || {};
-            let students = Object.values(allData.students || {});
+            let studentsObj = allData.students || {};
+            let studentKeys = Object.keys(studentsObj);
             let record = (allData.attendanceRecords && allData.attendanceRecords[selectedEthDate.key]) ? allData.attendanceRecords[selectedEthDate.key].data || {} : {};
 
             let csv = `ቀን: ${selectedEthDate.formatted}\n`;
             csv += `ተ.ቁ,የተማሪ ስም,ሁኔታ\n`;
 
-            students.forEach((student, index) => {
-                let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
-                csv += `${index + 1},"${student.name}",${status}\n`;
+            studentKeys.forEach((key, index) => {
+                let student = studentsObj[key];
+                let studentName = student.name || student;
+                let status = record[key] ? "ተገኝቷል" : "አልተገኘም";
+                csv += `${index + 1},"${studentName}",${status}\n`;
             });
 
             downloadCSV(csv, `Attendance_${selectedEthDate.key}.csv`);
@@ -428,15 +439,18 @@
     function exportSingleHistoryToExcel(dateKey, ethText) {
         database.ref().once('value', snapshot => {
             let allData = snapshot.val() || {};
-            let students = Object.values(allData.students || {});
+            let studentsObj = allData.students || {};
+            let studentKeys = Object.keys(studentsObj);
             let record = (allData.attendanceRecords && allData.attendanceRecords[dateKey]) ? allData.attendanceRecords[dateKey].data || {} : {};
 
             let csv = `ቀን: ${ethText}\n`;
             csv += `ተ.ቁ,የተማሪ ስም,ሁኔታ\n`;
 
-            students.forEach((student, index) => {
-                let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
-                csv += `${index + 1},"${student.name}",${status}\n`;
+            studentKeys.forEach((key, index) => {
+                let student = studentsObj[key];
+                let studentName = student.name || student;
+                let status = record[key] ? "ተገኝቷል" : "አልተገኘም";
+                csv += `${index + 1},"${studentName}",${status}\n`;
             });
 
             downloadCSV(csv, `Attendance_${dateKey}.csv`);
@@ -446,7 +460,8 @@
     function exportAllHistoryToExcel() {
         database.ref().once('value', snapshot => {
             let allData = snapshot.val() || {};
-            let students = Object.values(allData.students || {});
+            let studentsObj = allData.students || {};
+            let studentKeys = Object.keys(studentsObj);
             let records = allData.attendanceRecords || {};
             let dates = Object.keys(records);
 
@@ -459,11 +474,13 @@
             });
             csv += `\n`;
 
-            students.forEach(student => {
-                csv += `"${student.name}"`;
+            studentKeys.forEach(key => {
+                let student = studentsObj[key];
+                let studentName = student.name || student;
+                csv += `"${studentName}"`;
                 dates.forEach(dateKey => {
                     let record = records[dateKey].data || {};
-                    let status = record[student.id] ? "ተገኝቷል" : "አልተገኘም";
+                    let status = record[key] ? "ተገኝቷል" : "አልተገኘም";
                     csv += `,${status}`;
                 });
                 csv += `\n`;
