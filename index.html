@@ -226,10 +226,22 @@
         nameInput.value = "";
     }
 
-    // ተማሪን ከነአካቴው ከስም ዝርዝር ውስጥ ለማጥፋት
+    // ተማሪውን እና የተማሪውን የድሮ አቴንዳንስ መረጃዎች በሙሉ የማጥፋት ተግባር
     function deleteStudent(id, studentName) {
-        if(confirm(`በእርግጥ ተማሪ "${studentName}"ን ከዝርዝር ውስጥ ማጥፋት ይፈልጋሉ?`)) {
-            database.ref('students/' + id).remove();
+        if(confirm(`በእርግጥ ተማሪ "${studentName}"ን ሙሉ በሙሉ ማጥፋት ይፈልጋሉ?`)) {
+            // 1. ከተማሪዎች ስም ዝርዝር ውስጥ ማጥፋት
+            database.ref('students/' + id).remove().then(() => {
+                // 2. ከሁሉም የድሮ አቴንዳንስ መዝገቦች ውስጥ መረጃውን ማጽዳት
+                database.ref('attendanceRecords').once('value', snapshot => {
+                    let records = snapshot.val() || {};
+                    Object.keys(records).forEach(dateKey => {
+                        database.ref(`attendanceRecords/${dateKey}/data/${id}`).remove();
+                    });
+                });
+                alert(`ተማሪ "${studentName}" በተሳካ ሁኔታ ተሰርዟል!`);
+            }).catch(error => {
+                alert("ማጥፋት አልተቻለም፡ " + error.message);
+            });
         }
     }
 
@@ -288,7 +300,7 @@
                                 onchange="toggleAttendance(${student.id}, this.checked, ${isLocked})">
                         </td>
                         <td>
-                            <button class="btn-delete" ${isLocked ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="deleteStudent(${student.id}, '${student.name}')">አጥፋ</button>
+                            <button class="btn-delete" onclick="deleteStudent('${student.id}', '${student.name}')">አጥፋ</button>
                         </td>
                     </tr>
                 `;
