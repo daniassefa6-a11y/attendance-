@@ -3,28 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sundros2019 - በጋራ የሚሰራ አቴንዳንስ</title>
+    <title>Sundros2019 - Realtime Attendance</title>
+    <!-- SheetJS Library for Excel Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDK (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
     <style>
-        * { box-sizing: border-box; font-family: sans-serif; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #f4f7f6; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .container { width: 100%; max-width: 600px; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .school-header { text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px; }
-        .school-name { color: #007bff; margin: 0; }
-        .nav-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
-        .nav-btn { flex: 1; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .nav-btn.active { background: #007bff; }
-        .form-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input[type="text"], input[type="date"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .container { width: 100%; max-width: 750px; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        
+        .school-header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        .school-name { color: #007bff; font-size: 32px; font-weight: bold; margin: 0; text-transform: uppercase; }
+        .page-title { color: #555; font-size: 16px; margin: 5px 0 0 0; }
+        
+        /* Summary Box */
+        .summary-box { display: flex; justify-content: space-between; background: #e9ecef; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+        .summary-card { flex: 1; }
+        .summary-card h4 { margin: 0; font-size: 14px; color: #6c757d; }
+        .summary-card p { margin: 5px 0 0 0; font-size: 20px; font-weight: bold; }
+        .text-primary { color: #007bff; }
+        .text-success { color: #28a745; }
+        .text-danger { color: #dc3545; }
+
+        /* Controls & Form Elements */
+        .form-group, .action-tools { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        input[type="text"], input[type="date"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 15px; }
+        
+        button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; color: white; }
+        .btn-add { background-color: #28a745; }
+        .btn-add:hover { background-color: #218838; }
+        .btn-mark { background-color: #17a2b8; }
+        .btn-mark:hover { background-color: #138496; }
+        .btn-excel { background-color: #107c41; }
+        .btn-excel:hover { background-color: #0b5c30; }
+        .btn-delete { background-color: #dc3545; padding: 5px 10px; font-size: 12px; }
+
+        .search-box { width: 100%; margin-bottom: 15px; }
+        
+        /* Table Styles */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #007bff; color: white; }
-        .btn-delete { background-color: #dc3545; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; }
-        .page-view { display: none; }
-        .page-view.active { display: block; }
-        .history-card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 15px; }
+        .status-checkbox { width: 20px; height: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -32,47 +56,59 @@
 <div class="container">
     <div class="school-header">
         <h1 class="school-name">Sundros2019</h1>
-        <p style="color:#555; margin:5px 0 0 0;">በጋራ የሚሰራ አቴንዳንስ</p>
+        <p class="page-title">የተማሪዎች ዕለታዊ አቴንዳንስ መያዣ (Realtime Database)</p>
     </div>
 
-    <div class="nav-buttons">
-        <button class="nav-btn active" id="btnToday" onclick="switchPage('today')">የዕለቱ ሊስት</button>
-        <button class="nav-btn" id="btnHistory" onclick="switchPage('history')">የቀደሙ ቀናት ታሪክ</button>
-    </div>
-
-    <div id="todayPage" class="page-view active">
-        <div style="margin-bottom: 15px;">
-            <label><strong>ቀን ይምረጡ፡</strong></label>
-            <input type="date" id="attendanceDate" onchange="loadData()">
+    <!-- 1. ሪፖርት ማጠቃለያ (Summary) -->
+    <div class="summary-box">
+        <div class="summary-card">
+            <h4>ጠቅላላ ተማሪዎች</h4>
+            <p class="text-primary" id="totalCount">0</p>
         </div>
-
-        <div class="form-group">
-            <input type="text" id="studentName" placeholder="አዲስ ተማሪ ጨምር...">
-            <button onclick="addStudent()">ተማሪ ጨምር</button>
+        <div class="summary-card">
+            <h4>የተገኙ</h4>
+            <p class="text-success" id="presentCount">0</p>
         </div>
-
-        <h3 id="currentListTitle" style="color: #007bff;"></h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>ተ.ቁ</th>
-                    <th>የተማሪ ስም</th>
-                    <th>ሁኔታ</th>
-                    <th>ድርጊት</th>
-                </tr>
-            </thead>
-            <tbody id="studentList"></tbody>
-        </table>
+        <div class="summary-card">
+            <h4>የቀሩ</h4>
+            <p class="text-danger" id="absentCount">0</p>
+        </div>
     </div>
 
-    <div id="historyPage" class="page-view">
-        <h3>የተመዘገቡ ታሪኮች (የ24 ሰዓት)</h3>
-        <div id="historyContainer"></div>
+    <!-- 2. አዲስ ተማሪ መመዝገቢያ -->
+    <div class="form-group">
+        <input type="text" id="studentName" placeholder="የተማሪ ሙሉ ስም ያስገቡ...">
+        <button class="btn-add" onclick="addStudent()">ተማሪ ጨምር</button>
     </div>
+
+    <!-- 3. ቀን መምረጫ እና ተጨማሪ በተኖች -->
+    <div class="action-tools">
+        <input type="date" id="attendanceDate" onchange="listenToRealtimeData()">
+        <button class="btn-mark" onclick="markAllPresent()">ሁሉንም "ተገኝቷል" አድርግ</button>
+        <button class="btn-excel" onclick="exportToExcel()">ወደ Excel አውርድ</button>
+    </div>
+
+    <!-- 4. ስም መፈለጊያ (Search Box) -->
+    <input type="text" id="searchBox" class="search-box" placeholder="የተማሪ ስም ይፈልጉ..." onkeyup="filterStudents()">
+
+    <!-- 5. የተማሪዎች ሰንጠረዥ -->
+    <table>
+        <thead>
+            <tr>
+                <th>ተ.ቁ</th>
+                <th>የተማሪ ስም</th>
+                <th style="text-align: center;">ተገኝቷል / አልተገኘም</th>
+                <th>ድርጊት</th>
+            </tr>
+        </thead>
+        <tbody id="studentList">
+            <tr><td colspan="4" style="text-align:center;">መረጃ በመጫን ላይ ነው...</td></tr>
+        </tbody>
+    </table>
 </div>
 
 <script>
-    // የአንተ የFirebase መረጃዎች ተካተዋል
+    // የላክኸው የFirebase Config መረጃ እዚህ ተካቷል
     const firebaseConfig = {
         apiKey: "AIzaSyBngn2BpKdrFSeXq5lqMJT3PsyuFW0qiTA",
         authDomain: "project-7b8c40b5-a416-4965-98b.firebaseapp.com",
@@ -84,151 +120,172 @@
         measurementId: "G-EPZCFKVZ27"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
-    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    // Firebase ማስነሳት (Initialize)
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
 
+    // የዛሬን ቀን በዲፎልት መምረጥ
     document.getElementById('attendanceDate').valueAsDate = new Date();
 
-    function switchPage(page) {
-        document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active'));
-        document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+    let currentStudents = {};
+    let currentAttendance = {};
 
-        if (page === 'today') {
-            document.getElementById('todayPage').classList.add('active');
-            document.getElementById('btnToday').classList.add('active');
-        } else {
-            document.getElementById('historyPage').classList.add('active');
-            document.getElementById('btnHistory').classList.add('active');
-            loadHistory();
-        }
+    // Realtime Database ለማዳመጥና ገጹን በየተቀየረ ቁጥር ለማዘመን
+    function listenToRealtimeData() {
+        let date = document.getElementById('attendanceDate').value;
+        if (!date) return;
+
+        // ተማሪዎችን ከነባር ዳታቤዝ ማዳመጥ
+        db.ref('students').on('value', snapshot => {
+            currentStudents = snapshot.val() || {};
+            
+            // የነዚያን ተማሪዎች የአቴንዳንስ ሁኔታ ከዳታቤዝ ማዳመጥ
+            db.ref('attendance/' + date).on('value', attSnapshot => {
+                currentAttendance = attSnapshot.val() || {};
+                renderTable();
+            });
+        });
     }
 
-    function getSelectedDate() {
-        return document.getElementById('attendanceDate').value;
-    }
-
+    // አዲስ ተማሪ ወደ Database መላክ
     function addStudent() {
         let nameInput = document.getElementById('studentName');
         let name = nameInput.value.trim();
-        if (name === "") return alert("እባክዎን የተማሪ ስም ያስገቡ!");
 
-        let studentId = Date.now();
-        database.ref('students/' + studentId).set({ id: studentId, name: name });
-        nameInput.value = "";
+        if (name === "") {
+            alert("እባክዎን የተማሪ ስም ያስገቡ!");
+            return;
+        }
+
+        let studentId = "std_" + Date.now();
+        db.ref('students/' + studentId).set({
+            name: name
+        }).then(() => {
+            nameInput.value = "";
+        });
     }
 
+    // ተማሪ ከ Database ማጥፋት
     function deleteStudent(id) {
-        if(confirm("በእርግጥ ይህንን ተማሪ ማጥፋት ይፈልጋሉ?")) {
-            database.ref('students/' + id).remove();
+        if (confirm("በእርግጥ ይህንን ተማሪ ከዳታቤዝ ማጥፋት ይፈልጋሉ?")) {
+            db.ref('students/' + id).remove();
         }
     }
 
+    // የአቴንዳንስ ሁኔታን በ Realtime ወደ Database ሴቭ ማድረግ
     function toggleAttendance(studentId, isChecked) {
-        let dateKey = getSelectedDate();
-        if (!dateKey) return alert("እባክዎን ቀን ይምረጡ!");
+        let date = document.getElementById('attendanceDate').value;
+        if (!date) return alert("እባክዎን ቀን ይምረጡ!");
 
-        let dateRef = database.ref('attendanceRecords/' + dateKey);
-        dateRef.once('value', snapshot => {
-            let record = snapshot.val();
-            let createdTimestamp = (record && record.createdTimestamp) ? record.createdTimestamp : Date.now();
-            
-            database.ref('attendanceRecords/' + dateKey + '/createdTimestamp').set(createdTimestamp);
-            database.ref('attendanceRecords/' + dateKey + '/data/' + studentId).set(isChecked);
-        });
+        db.ref(`attendance/${date}/${studentId}`).set(isChecked);
     }
 
-    function loadData() {
-        let dateKey = getSelectedDate();
-        document.getElementById('currentListTitle').innerText = `የቀን ፡ ${dateKey} ሊስት`;
+    // ሁሉንም ተማሪዎች በአንድ ጊዜ "ተገኝቷል" ማድረግ
+    function markAllPresent() {
+        let date = document.getElementById('attendanceDate').value;
+        if (!date) return alert("እባክዎን ቀን ይምረጡ!");
 
-        database.ref().on('value', snapshot => {
-            let allData = snapshot.val() || {};
-            let studentsObj = allData.students || {};
-            let recordsObj = allData.attendanceRecords || {};
-
-            let students = Object.values(studentsObj);
-            let currentRecord = recordsObj[dateKey] || {};
-            let attendanceData = currentRecord.data || {};
-
-            let tbody = document.getElementById('studentList');
-            tbody.innerHTML = "";
-
-            if (students.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">ምንም የተመዘገበ ተማሪ የለም!</td></tr>';
-                return;
-            }
-
-            students.forEach((student, index) => {
-                let isPresent = attendanceData[student.id] === true;
-                let row = `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${student.name}</td>
-                        <td style="text-align: center;">
-                            <input type="checkbox" style="width:20px; height:20px;" 
-                                ${isPresent ? 'checked' : ''} 
-                                onchange="toggleAttendance(${student.id}, this.checked)">
-                        </td>
-                        <td>
-                            <button class="btn-delete" onclick="deleteStudent(${student.id})">አጥፋ</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
-            });
-
-            cleanExpiredRecords(recordsObj);
+        let updates = {};
+        Object.keys(currentStudents).forEach(id => {
+            updates[id] = true;
         });
+
+        db.ref(`attendance/${date}`).update(updates);
     }
 
-    function cleanExpiredRecords(recordsObj) {
-        let currentTime = Date.now();
-        for (let dateKey in recordsObj) {
-            let recordTime = recordsObj[dateKey].createdTimestamp;
-            if (recordTime && (currentTime - recordTime >= TWENTY_FOUR_HOURS_MS)) {
-                database.ref('attendanceRecords/' + dateKey).remove();
-            }
+    // ሰንጠረዡን በስክሪኑ ላይ መሳልና ማሳየት
+    function renderTable() {
+        let tbody = document.getElementById('studentList');
+        tbody.innerHTML = "";
+
+        let studentIds = Object.keys(currentStudents);
+
+        if (studentIds.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">ምንም የተመዘገበ ተማሪ የለም!</td></tr>';
+            updateSummary(0, 0);
+            return;
         }
+
+        let presentCount = 0;
+
+        studentIds.forEach((id, index) => {
+            let student = currentStudents[id];
+            let isPresent = currentAttendance[id] === true;
+
+            if (isPresent) presentCount++;
+
+            let row = `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${student.name}</td>
+                    <td style="text-align: center;">
+                        <input type="checkbox" class="status-checkbox" 
+                            ${isPresent ? 'checked' : ''} 
+                            onchange="toggleAttendance('${id}', this.checked)">
+                    </td>
+                    <td>
+                        <button class="btn-delete" onclick="deleteStudent('${id}')">አጥፋ</button>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+
+        updateSummary(studentIds.length, presentCount);
+        filterStudents();
     }
 
-    function loadHistory() {
-        database.ref().once('value', snapshot => {
-            let allData = snapshot.val() || {};
-            let students = Object.values(allData.students || {});
-            let records = allData.attendanceRecords || {};
-            let container = document.getElementById('historyContainer');
-            container.innerHTML = "";
+    // ማጠቃለያዎችን ማዘመን
+    function updateSummary(total, present) {
+        document.getElementById('totalCount').innerText = total;
+        document.getElementById('presentCount').innerText = present;
+        document.getElementById('absentCount').innerText = total - present;
+    }
 
-            let dates = Object.keys(records).reverse();
-            if (dates.length === 0) {
-                container.innerHTML = "<p style='text-align:center;'>ምንም የተቀመጠ ታሪክ የለም።</p>";
-                return;
+    // ስም መፈለጊያ (Search Filter)
+    function filterStudents() {
+        let filterValue = document.getElementById('searchBox').value.toLowerCase();
+        let rows = document.querySelectorAll('#studentList tr');
+
+        rows.forEach(row => {
+            let nameCell = row.getElementsByTagName('td')[1];
+            if (nameCell) {
+                let nameText = nameCell.textContent || nameCell.innerText;
+                row.style.display = nameText.toLowerCase().indexOf(filterValue) > -1 ? "" : "none";
             }
-
-            let currentTime = Date.now();
-            dates.forEach(date => {
-                let card = document.createElement('div');
-                card.className = 'history-card';
-                let createdTimestamp = records[date].createdTimestamp || currentTime;
-                let remainingMs = TWENTY_FOUR_HOURS_MS - (currentTime - createdTimestamp);
-                let remainingHours = Math.max(0, Math.floor(remainingMs / (1000 * 60 * 60)));
-
-                let html = `<h4>የቀን፡ ${date} ሊስት (ቀሪ፡ ${remainingHours} ሰዓት)</h4><table><thead><tr><th>ተማሪ</th><th>ሁኔታ</th></tr></thead><tbody>`;
-                students.forEach(student => {
-                    let status = (records[date].data && records[date].data[student.id]) 
-                        ? "<span style='color:green; font-weight:bold;'>ተገኝቷል</span>" 
-                        : "<span style='color:red;'>አልተገኘም</span>";
-                    html += `<tr><td>${student.name}</td><td>${status}</td></tr>`;
-                });
-                html += `</tbody></table>`;
-                card.innerHTML = html;
-                container.appendChild(card);
-            });
         });
     }
 
-    window.onload = loadData;
+    // መረጃዎችን ወደ Excel አውርዶ ማዘጋጀት
+    function exportToExcel() {
+        let date = document.getElementById('attendanceDate').value;
+        let studentIds = Object.keys(currentStudents);
+
+        if (studentIds.length === 0) {
+            alert("የሚወርድ መረጃ የለም!");
+            return;
+        }
+
+        let excelData = studentIds.map((id, index) => {
+            let isPresent = currentAttendance[id] === true ? "ተገኝቷል" : "አልተገኘም";
+            return {
+                "ተ.ቁ": index + 1,
+                "የተማሪ ስም": currentStudents[id].name,
+                "ቀን": date,
+                "ሁኔታ": isPresent
+            };
+        });
+
+        let worksheet = XLSX.utils.json_to_sheet(excelData);
+        let workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
+        XLSX.writeFile(workbook, `Sundros2019_Attendance_${date}.xlsx`);
+    }
+
+    // ገጹ ሲከፈት ዳታ ማዳመጥ ይጀምራል
+    window.onload = listenToRealtimeData;
 </script>
 
 </body>
