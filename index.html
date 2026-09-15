@@ -16,7 +16,7 @@
         .nav-btn { flex: 1; padding: 10px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
         .nav-btn.active { background: #007bff; }
         .form-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 15px; }
+        input[type="text"], select { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 15px; }
         button { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
@@ -27,6 +27,9 @@
         .timer-box { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; margin-bottom: 15px; font-weight: bold; text-align: center; }
         .locked-badge { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; text-align: center; font-weight: bold; margin-bottom: 15px; }
         .history-card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 15px; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .date-picker-box { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 15px; }
+        .date-select-group { display: flex; gap: 5px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -44,9 +47,16 @@
 
     <!-- 1. የዕለቱ ገጽ -->
     <div id="todayPage" class="page-view active">
-        <div style="margin-bottom: 15px; text-align: center;">
-            <h3 style="margin:0; color:#333;">የዛሬ ቀን (በኢትዮጵያ ዘመን አቆጣጠር)፡</h3>
-            <h2 id="ethiopianDateText" style="color:#007bff; margin:5px 0;">--/--/----</h2>
+        <div class="date-picker-box">
+            <label style="font-weight: bold; color: #333;">ቀን ይምረጡ (በኢትዮጵያ ዘመን አቆጣጠር)፡</label>
+            <div class="date-select-group">
+                <select id="ethDay" onchange="onCustomDateChange()"></select>
+                <select id="ethMonth" onchange="onCustomDateChange()"></select>
+                <select id="ethYear" onchange="onCustomDateChange()"></select>
+            </div>
+            <div style="margin-top: 10px; text-align: right;">
+                <button style="padding: 5px 10px; font-size: 13px; background: #007bff;" onclick="resetToToday()">ወደ ዛሬ ቀን ተመለስ</button>
+            </div>
         </div>
 
         <div id="timerContainer" class="timer-box">
@@ -94,7 +104,8 @@
     const database = firebase.database();
     const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
-    // የኢትዮጵያ ቀንን ማስያዣ አሰራር (Gregorian to Ethiopian Convertor)
+    const monthsEth = ["መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት", "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"];
+
     function getEthiopicDate(date = new Date()) {
         const year = date.getFullYear();
         const month = date.getMonth() + 1;
@@ -108,8 +119,6 @@
         const isLeap = (ethYear + 1) % 4 === 0;
         const newYearDay = isLeap ? 12 : 11;
 
-        const monthsEth = ["መስከረም", "ጥቅምት", "ኅዳር", "ታኅሣሥ", "ጥር", "የካቲት", "መጋቢት", "ሚያዝያ", "ግንቦት", "ሰኔ", "ሐምሌ", "ነሐሴ", "ጳጉሜ"];
-        
         let startOfEthYear = new Date(year, 8, newYearDay);
         if (date < startOfEthYear) {
             startOfEthYear = new Date(year - 1, 8, isLeap ? 12 : 11);
@@ -125,13 +134,67 @@
         }
 
         return {
+            year: ethYear,
+            monthIndex: ethMonthIndex,
+            day: ethDay,
             formatted: `${monthsEth[ethMonthIndex]} ${ethDay} ቀን ${ethYear} ዓ.ም`,
             key: `${ethYear}-${ethMonthIndex + 1}-${ethDay}`
         };
     }
 
-    const todayEth = getEthiopicDate();
-    document.getElementById('ethiopianDateText').innerText = todayEth.formatted;
+    let selectedEthDate = getEthiopicDate();
+
+    function populateDatePickers() {
+        const daySelect = document.getElementById('ethDay');
+        const monthSelect = document.getElementById('ethMonth');
+        const yearSelect = document.getElementById('ethYear');
+
+        daySelect.innerHTML = "";
+        for (let i = 1; i <= 30; i++) {
+            daySelect.innerHTML += `<option value="${i}">${i}</option>`;
+        }
+
+        monthSelect.innerHTML = "";
+        monthsEth.forEach((m, idx) => {
+            monthSelect.innerHTML += `<option value="${idx}">${m}</option>`;
+        });
+
+        yearSelect.innerHTML = "";
+        let currentYear = selectedEthDate.year;
+        for (let y = currentYear - 2; y <= currentYear + 2; y++) {
+            yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+        }
+
+        setPickerValues(selectedEthDate);
+    }
+
+    function setPickerValues(ethObj) {
+        document.getElementById('ethDay').value = ethObj.day;
+        document.getElementById('ethMonth').value = ethObj.monthIndex;
+        document.getElementById('ethYear').value = ethObj.year;
+    }
+
+    function onCustomDateChange() {
+        let d = parseInt(document.getElementById('ethDay').value);
+        let mIdx = parseInt(document.getElementById('ethMonth').value);
+        let y = parseInt(document.getElementById('ethYear').value);
+
+        selectedEthDate = {
+            year: y,
+            monthIndex: mIdx,
+            day: d,
+            formatted: `${monthsEth[mIdx]} ${d} ቀን ${y} ዓ.ም`,
+            key: `${y}-${mIdx + 1}-${d}`
+        };
+
+        loadData();
+    }
+
+    function resetToToday() {
+        selectedEthDate = getEthiopicDate();
+        setPickerValues(selectedEthDate);
+        loadData();
+    }
 
     function switchPage(page) {
         document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active'));
@@ -169,7 +232,7 @@
             return;
         }
 
-        let dateKey = todayEth.key;
+        let dateKey = selectedEthDate.key;
         let dateRef = database.ref('attendanceRecords/' + dateKey);
 
         dateRef.once('value', snapshot => {
@@ -177,7 +240,7 @@
             let createdTimestamp = (record && record.createdTimestamp) ? record.createdTimestamp : Date.now();
 
             database.ref('attendanceRecords/' + dateKey + '/createdTimestamp').set(createdTimestamp);
-            database.ref('attendanceRecords/' + dateKey + '/ethiopianDateText').set(todayEth.formatted);
+            database.ref('attendanceRecords/' + dateKey + '/ethiopianDateText').set(selectedEthDate.formatted);
             database.ref('attendanceRecords/' + dateKey + '/data/' + studentId).set(isChecked);
         });
     }
@@ -187,7 +250,7 @@
             let allData = snapshot.val() || {};
             let students = Object.values(allData.students || {});
             let recordsObj = allData.attendanceRecords || {};
-            let currentRecord = recordsObj[todayEth.key] || {};
+            let currentRecord = recordsObj[selectedEthDate.key] || {};
             let attendanceData = currentRecord.data || {};
 
             let createdTimestamp = currentRecord.createdTimestamp || Date.now();
@@ -195,7 +258,7 @@
             let elapsedTime = currentTime - createdTimestamp;
             let isLocked = currentRecord.createdTimestamp && (elapsedTime >= TWENTY_FOUR_HOURS_MS);
 
-            updateTimerUI(createdTimestamp, isLocked);
+            updateTimerUI(createdTimestamp, isLocked, currentRecord.createdTimestamp);
 
             let tbody = document.getElementById('studentList');
             tbody.innerHTML = "";
@@ -227,13 +290,20 @@
         });
     }
 
-    function updateTimerUI(createdTimestamp, isLocked) {
+    function updateTimerUI(createdTimestamp, isLocked, hasCreatedTime) {
         let timerContainer = document.getElementById('timerContainer');
         let addStudentSection = document.getElementById('addStudentSection');
 
+        if (!hasCreatedTime) {
+            timerContainer.className = "timer-box";
+            timerContainer.innerText = "ለዚህ ቀን ገና አቴንዳንስ አልተያዘም (አቴንዳንስ ሲይዙ የ24 ሰዓት ቆጣሪው ይጀምራል)";
+            addStudentSection.style.display = "flex";
+            return;
+        }
+
         if (isLocked) {
             timerContainer.className = "locked-badge";
-            timerContainer.innerText = "🔒 የዛሬው መዝገብ የ 24 ሰዓት ጊዜው ስለሞላ ተዘጋቷል (Locked)";
+            timerContainer.innerText = "🔒 የዚህ ቀን መዝገብ የ 24 ሰዓት ጊዜው ስለሞላ ተዘጋቷል (Locked)";
             addStudentSection.style.display = "none";
         } else {
             timerContainer.className = "timer-box";
@@ -246,8 +316,16 @@
             let minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
             let seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
 
-            document.getElementById('countdownTimer').innerText = 
-                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            timerContainer.innerHTML = `ቀሪ ሰዓት (24 ሰዓት ከመዘጋቱ በፊት)፡ <span>${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}</span>`;
+        }
+    }
+
+    // የታሪክ መዝገብን ለማጥፋት (Delete History Record)
+    function deleteHistoryRecord(dateKey) {
+        if (confirm("በእርግጥ የዚህን ቀን የታሪክ መዝገብ በሙሉ ማጥፋት ይፈልጋሉ?")) {
+            database.ref('attendanceRecords/' + dateKey).remove().then(() => {
+                loadHistory();
+            });
         }
     }
 
@@ -273,13 +351,22 @@
 
                     let ethText = record.ethiopianDateText || dateKey;
 
-                    let html = `<h4 style="color:#007bff; margin-top:0;">የቀን፡ ${ethText}</h4><table><thead><tr><th>ተማሪ</th><th>ሁኔታ</th></tr></thead><tbody>`;
+                    let html = `
+                        <div class="history-header">
+                            <h4 style="color:#007bff; margin:0;">የቀን፡ ${ethText}</h4>
+                            <button class="btn-delete" onclick="deleteHistoryRecord('${dateKey}')">ታሪክ አጥፋ</button>
+                        </div>
+                        <table>
+                            <thead><tr><th>ተማሪ</th><th>ሁኔታ</th></tr></thead>
+                            <tbody>`;
+                    
                     students.forEach(student => {
                         let status = (record.data && record.data[student.id]) 
                             ? "<span style='color:green; font-weight:bold;'>ተገኝቷል</span>" 
                             : "<span style='color:red;'>አልተገኘም</span>";
                         html += `<tr><td>${student.name}</td><td>${status}</td></tr>`;
                     });
+                    
                     html += `</tbody></table>`;
                     card.innerHTML = html;
                     container.appendChild(card);
@@ -292,7 +379,10 @@
         loadData();
     }, 1000);
 
-    window.onload = loadData;
+    window.onload = function() {
+        populateDatePickers();
+        loadData();
+    };
 </script>
 
 </body>
