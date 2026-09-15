@@ -21,7 +21,8 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         th { background-color: #007bff; color: white; }
-        .btn-delete { background-color: #dc3545; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; }
+        .btn-delete { background-color: #dc3545; padding: 6px 12px; border: none; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-delete:hover { background-color: #bd2130; }
         .btn-excel { background-color: #17a2b8; padding: 5px 10px; border: none; color: white; border-radius: 3px; cursor: pointer; margin-right: 5px; }
         .page-view { display: none; }
         .page-view.active { display: block; }
@@ -225,8 +226,9 @@
         nameInput.value = "";
     }
 
-    function deleteStudent(id) {
-        if(confirm("በእርግጥ ይህንን ተማሪ ማጥፋት ይፈልጋሉ?")) {
+    // ተማሪን ከነአካቴው ከስም ዝርዝር ውስጥ ለማጥፋት
+    function deleteStudent(id, studentName) {
+        if(confirm(`በእርግጥ ተማሪ "${studentName}"ን ከዝርዝር ውስጥ ማጥፋት ይፈልጋሉ?`)) {
             database.ref('students/' + id).remove();
         }
     }
@@ -261,10 +263,7 @@
             let createdTimestamp = currentRecord.createdTimestamp || Date.now();
             let currentTime = Date.now();
             let elapsedTime = currentTime - createdTimestamp;
-            let isLocked = currentRecord.currentTimestamp ? (elapsedTime >= TWENTY_FOUR_HOURS_MS) : false;
-            if (currentRecord.createdTimestamp && elapsedTime >= TWENTY_FOUR_HOURS_MS) {
-                isLocked = true;
-            }
+            let isLocked = currentRecord.createdTimestamp && (elapsedTime >= TWENTY_FOUR_HOURS_MS);
 
             updateTimerUI(createdTimestamp, isLocked, currentRecord.createdTimestamp);
 
@@ -283,13 +282,13 @@
                         <td>${index + 1}</td>
                         <td>${student.name}</td>
                         <td style="text-align: center;">
-                            <input type="checkbox" style="width:20px; height:20px;" 
+                            <input type="checkbox" style="width:20px; height:20px; cursor:pointer;" 
                                 ${isPresent ? 'checked' : ''} 
                                 ${isLocked ? 'disabled' : ''}
                                 onchange="toggleAttendance(${student.id}, this.checked, ${isLocked})">
                         </td>
                         <td>
-                            <button class="btn-delete" ${isLocked ? 'disabled style="opacity:0.5;"' : ''} onclick="deleteStudent(${student.id})">አጥፋ</button>
+                            <button class="btn-delete" ${isLocked ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''} onclick="deleteStudent(${student.id}, '${student.name}')">አጥፋ</button>
                         </td>
                     </tr>
                 `;
@@ -384,8 +383,6 @@
             });
         });
     }
-
-    // --- የ Excel (CSV) ማውረጃ ተግባራት ---
 
     function downloadCSV(csvContent, fileName) {
         let blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
